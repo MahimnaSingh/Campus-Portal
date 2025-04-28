@@ -1,0 +1,4 @@
+mysql -u root -p universitydb < database.sql
+1234
+node server.js
+npm run dev
