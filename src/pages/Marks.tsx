@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchMarks } from "@/lib/api"; // ✅ Fetch real marks
+import { fetchMarks } from "@/lib/api"; 
 import { BookOpen, Save, Edit2, AlertTriangle, XCircle, BarChart, FileDown } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart as ReBarChart, Bar, XAxis, YAxis, Tooltip, Legend } from "recharts";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
