@@ -42,12 +42,6 @@ export async function fetchTimetable() {
   return response.json();
 }
 
-export async function fetchCourses(): Promise<Course[]> {
-  const response = await fetch(`${API_URL}/courses`);
-  if (!response.ok) throw new Error("Failed to fetch courses");
-  return response.json();
-}
-
 export async function fetchStudents(): Promise<Student[]> {
   const response = await fetch(`${API_URL}/students`);
   if (!response.ok) throw new Error("Failed to fetch students");
@@ -180,4 +174,43 @@ export async function uploadImportantTopic(data: {
   });
   if (!response.ok) throw new Error("Failed to upload topic");
   return response.json();
+}
+
+export async function fetchCourses() {
+  const response = await fetch(`${API_URL}/courses`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch courses");
+  }
+  const courses = await response.json();
+  return courses;
+}
+
+export async function fetchCoursesWithFaculty(): Promise<any[]> {
+  const res = await fetch(`${API_URL}/courses`);
+  if (!res.ok) throw new Error(`Failed to fetch courses: ${res.status}`);
+  return res.json();
+}
+
+// Fetch materials for a course
+export async function fetchStudyMaterials(courseId: string): Promise<any[]> {
+  const res = await fetch(`${API_URL}/study-materials/${courseId}`);
+  if (!res.ok) throw new Error(`Failed to fetch study materials: ${res.status}`);
+  return res.json();
+}
+
+// Upload a new material
+export async function uploadStudyMaterial(data: {
+  courseId: string;
+  facultyId: string;
+  title: string;
+  fileType: string;
+  fileLink: string;
+}): Promise<any> {
+  const res = await fetch(`${API_URL}/study-materials/upload`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+  return res.json();
 }

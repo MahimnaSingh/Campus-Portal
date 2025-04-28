@@ -1,9 +1,12 @@
+// server.js
 import dotenv from 'dotenv';
 dotenv.config();
+
 import cors from 'cors';
 import express from 'express';
 import pool from './db/connection.js';
 
+// Routers
 import departmentsRouter from './routes/departments.js';
 import coursesRouter from './routes/courses.js';
 import studentsRouter from './routes/students.js';
@@ -12,13 +15,14 @@ import attendanceRouter from './routes/attendance.js';
 import marksRouter from './routes/marks.js';
 import noticesRouter from './routes/notices.js';
 import loginRouter from './routes/login.js';
-import timetableRouter from './routes/timetable.js'; 
+import timetableRouter from './routes/timetable.js';
 import importantTopicsRouter from './routes/importantTopics.js';
+import studyMaterialsRouter from './routes/studyMaterials.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Enable CORS and middleware
+// Enable CORS and JSON parsing
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
@@ -26,9 +30,7 @@ app.use(cors({
 }));
 app.use(express.json());
 
-/** ROUTES **/
-
-// Test Route
+// Health-check / test
 app.get('/api/test', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT 1 + 1 AS result');
@@ -38,7 +40,7 @@ app.get('/api/test', async (req, res) => {
   }
 });
 
-// Existing Routers
+// Mount all routers
 app.use('/api/departments', departmentsRouter);
 app.use('/api/courses', coursesRouter);
 app.use('/api/students', studentsRouter);
@@ -47,9 +49,11 @@ app.use('/api/attendance', attendanceRouter);
 app.use('/api/marks', marksRouter);
 app.use('/api/notices', noticesRouter);
 app.use('/api/login', loginRouter);
-app.use('/api/important-topics', importantTopicsRouter);
 app.use('/api/timetable', timetableRouter);
+app.use('/api/important-topics', importantTopicsRouter);
+app.use('/api/study-materials', studyMaterialsRouter);
 
+// Exams-related APIs
 app.get('/api/exams', async (req, res) => {
   try {
     const [exams] = await pool.query('SELECT * FROM exams');
@@ -64,7 +68,7 @@ app.get('/api/exam-subjects/:examId', async (req, res) => {
   const { examId } = req.params;
   try {
     const [subjects] = await pool.query(`
-      SELECT es.course_id, c.course_name, es.exam_date, es.exam_time, es.room 
+      SELECT es.course_id, c.course_name, es.exam_date, es.exam_time, es.room
       FROM exam_subjects es
       JOIN courses c ON es.course_id = c.course_id
       WHERE es.exam_id = ?
@@ -76,17 +80,15 @@ app.get('/api/exam-subjects/:examId', async (req, res) => {
   }
 });
 
+// Students with fee status
 app.get('/api/students-with-fees', async (req, res) => {
   try {
     const [students] = await pool.query(`
       SELECT 
-        s.student_id, 
+        s.student_id,
         CONCAT(s.first_name, ' ', s.last_name) AS name,
         s.section,
-        CASE 
-          WHEN p.payment_status = 'successful' THEN 'paid' 
-          ELSE 'pending'
-        END AS fee_status
+        CASE WHEN p.payment_status = 'successful' THEN 'paid' ELSE 'pending' END AS fee_status
       FROM students s
       LEFT JOIN payments p ON s.student_id = p.student_id
     `);
@@ -97,6 +99,7 @@ app.get('/api/students-with-fees', async (req, res) => {
   }
 });
 
+// List all sections
 app.get('/api/sections', async (req, res) => {
   try {
     const [sections] = await pool.query('SELECT DISTINCT section FROM students');
@@ -110,10 +113,10 @@ app.get('/api/sections', async (req, res) => {
   }
 });
 
+// Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`Database connection parameters:`);
-  console.log(`Host: ${process.env.DB_HOST || 'localhost'}`);
-  console.log(`User: ${process.env.DB_USER || 'root'}`);
-  console.log(`Database: ${process.env.DB_NAME || 'DBMS'}`);
+  console.log(`DB Host: ${process.env.DB_HOST || 'localhost'}`);
+  console.log(`DB User: ${process.env.DB_USER || 'root'}`);
+  console.log(`DB Name: ${process.env.DB_NAME || 'DBMS'}`);
 });
