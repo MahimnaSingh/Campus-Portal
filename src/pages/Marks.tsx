@@ -1,23 +1,22 @@
 import { useState, useEffect } from "react";
 import Layout from "@/components/Layout";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { fetchMarks } from "@/lib/api"; 
-import { BookOpen, Save, Edit2, AlertTriangle, XCircle, BarChart, FileDown } from "lucide-react";
+import { fetchMarks, fetchSections } from "@/lib/api";
+import { BookOpen, Save, Edit2, FileDown } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart as ReBarChart, Bar, XAxis, YAxis, Tooltip, Legend } from "recharts";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import jsPDF from "jspdf";
+import "jspdf-autotable";
 
 const COLORS = ['#4CAF50', '#2196F3', '#FFC107', '#F44336'];
 
 const Marks = () => {
   const [userRole, setUserRole] = useState<"student" | "faculty">("student");
   const [marksData, setMarksData] = useState<any[]>([]);
-  const [selectedCourse, setSelectedCourse] = useState<string>("");
+  const [sections, setSections] = useState<any[]>([]);
+  const [selectedSection, setSelectedSection] = useState("");
+  const [selectedSubject, setSelectedSubject] = useState("");
   const [editMode, setEditMode] = useState(false);
-  const [tempMarks, setTempMarks] = useState({});
-  const [showStats, setShowStats] = useState(false);
 
   const userData = JSON.parse(localStorage.getItem("userData") || "{}");
   const studentId = userData.student_id;
@@ -27,49 +26,32 @@ const Marks = () => {
     if (storedRole) {
       setUserRole(storedRole);
     }
-
     fetchData();
   }, []);
 
   const fetchData = async () => {
     try {
-      const data = await fetchMarks();
-      setMarksData(data);
-      if (data.length > 0) {
-        setSelectedCourse(data[0].course_id);
-      }
+      const [marks, sections] = await Promise.all([
+        fetchMarks(),
+        fetchSections()
+      ]);
+      setMarksData(marks);
+      setSections(sections.map((sec: any) => sec.id));
+      if (sections.length > 0) setSelectedSection(sections[0].id);
+      if (marks.length > 0) setSelectedSubject(marks[0].course_id);
     } catch (error) {
-      console.error("Failed to fetch marks:", error);
+      console.error("Failed to fetch:", error);
     }
-  };
-
-  const toggleEditMode = () => {
-    if (editMode) {
-      setEditMode(false);
-    } else {
-      setTempMarks(JSON.parse(JSON.stringify(marksData)));
-      setEditMode(true);
-    }
-  };
-
-  const cancelEdit = () => {
-    setEditMode(false);
-    setTempMarks({});
-  };
-
-  const calculateTotal = (studentMarks: any[]) => {
-    const total = studentMarks.reduce((acc, m) => acc + m.marks_obtained, 0);
-    return total;
   };
 
   const calculateGrade = (percentage: number) => {
-    if (percentage >= 90) return { grade: 'O', points: 10 };
-    if (percentage >= 80) return { grade: 'A+', points: 9 };
-    if (percentage >= 70) return { grade: 'A', points: 8 };
-    if (percentage >= 60) return { grade: 'B+', points: 7 };
-    if (percentage >= 50) return { grade: 'B', points: 6 };
-    if (percentage >= 40) return { grade: 'C', points: 5 };
-    return { grade: 'F', points: 0 };
+    if (percentage >= 90) return 'O';
+    if (percentage >= 80) return 'A+';
+    if (percentage >= 70) return 'A';
+    if (percentage >= 60) return 'B+';
+    if (percentage >= 50) return 'B';
+    if (percentage >= 40) return 'C';
+    return 'F';
   };
 
   const prepareStudentChartData = () => {
@@ -103,74 +85,68 @@ const Marks = () => {
     ];
   };
 
-  const prepareClassStatsData = () => {
-    const courseMarks = marksData.filter((m) => m.course_id === selectedCourse);
-    const studentGroups: any = {};
+  const generatePDF = () => {
+    const doc = new jsPDF();
+  
+    doc.setFontSize(18);
+    doc.text("Student Marks Report", 14, 22);
+    doc.setFontSize(12);
+    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 30);
 
-    courseMarks.forEach((mark) => {
-      if (!studentGroups[mark.student_id]) {
-        studentGroups[mark.student_id] = [];
-      }
-      studentGroups[mark.student_id].push(mark);
+    const headers = [["Subject", "Assignments", "Midterm", "Final", "Total", "Grade"]];
+  
+    const data = prepareStudentChartData().map((subject) => {
+      const percentage = (subject.total / 120) * 100;
+      const grade = calculateGrade(percentage);
+
+      return [
+        subject.name,
+        subject.assignments,
+        subject.midterm,
+        subject.final,
+        subject.total,
+        grade
+      ];
     });
 
-    const stats = {
-      assignments: 0,
-      midterm: 0,
-      final: 0,
-      total: 0,
-      excellent: 0,
-      good: 0,
-      average: 0,
-      poor: 0,
-    };
+    (doc as any).autoTable({
+      startY: 40,
+      head: headers,
+      body: data,
+      theme: "grid",
+      styles: { fontSize: 10 },
+      headStyles: { fillColor: [22, 160, 133] }
+    });
 
-    const studentCount = Object.keys(studentGroups).length;
-
-    for (const student in studentGroups) {
-      const marks = studentGroups[student];
-      const total = calculateTotal(marks);
-
-      if (total >= 100) stats.excellent++;
-      else if (total >= 80) stats.good++;
-      else if (total >= 60) stats.average++;
-      else stats.poor++;
-
-      marks.forEach((m) => {
-        if (m.exam_type === "assignment") stats.assignments += m.marks_obtained;
-        if (m.exam_type === "midterm") stats.midterm += m.marks_obtained;
-        if (m.exam_type === "final") stats.final += m.marks_obtained;
-      });
-
-      stats.total += total;
-    }
-
-    if (studentCount > 0) {
-      stats.assignments = Math.round(stats.assignments / studentCount);
-      stats.midterm = Math.round(stats.midterm / studentCount);
-      stats.final = Math.round(stats.final / studentCount);
-      stats.total = Math.round(stats.total / studentCount);
-    }
-
-    return stats;
+    doc.save("marks_report.pdf");
   };
 
-  const classPerformanceData = () => {
-    const stats = prepareClassStatsData();
-    return [
-      { name: 'Excellent', value: stats.excellent },
-      { name: 'Good', value: stats.good },
-      { name: 'Average', value: stats.average },
-      { name: 'Poor', value: stats.poor }
-    ];
+  const groupMarksByStudent = () => {
+    const grouped: any = {};
+
+    marksData.forEach((mark) => {
+      const key = `${mark.student_id}_${mark.course_id}`;
+      if (!grouped[key]) {
+        grouped[key] = {
+          studentName: mark.student_name,
+          studentId: mark.student_id,
+          assignments: 0,
+          midterm: 0,
+          final: 0
+        };
+      }
+      if (mark.exam_type === "assignment") grouped[key].assignments = mark.marks_obtained;
+      if (mark.exam_type === "midterm") grouped[key].midterm = mark.marks_obtained;
+      if (mark.exam_type === "final") grouped[key].final = mark.marks_obtained;
+    });
+
+    return Object.values(grouped);
   };
 
+  // === Student View ===
   if (userRole === "student") {
-    const studentMarks = marksData.filter((m) => m.student_id === studentId);
-
     return (
       <Layout title="Academic Performance">
-        {/* --- Top Overview --- */}
         <div className="grid gap-6 md:grid-cols-2 mb-6">
           <Card>
             <CardHeader>
@@ -178,14 +154,12 @@ const Marks = () => {
                 <BookOpen className="mr-2 h-5 w-5" />
                 Performance Overview
               </CardTitle>
-              <CardDescription>
-                Your academic performance across all subjects
-              </CardDescription>
+              <CardDescription>Your performance across all subjects</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={250}>
                 <ReBarChart data={prepareStudentChartData()}>
-                  <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                  <XAxis dataKey="name" />
                   <YAxis />
                   <Tooltip />
                   <Legend />
@@ -200,9 +174,6 @@ const Marks = () => {
           <Card>
             <CardHeader>
               <CardTitle>Performance Distribution</CardTitle>
-              <CardDescription>
-                Categorization of your performance across subjects
-              </CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={250}>
@@ -228,19 +199,19 @@ const Marks = () => {
           </Card>
         </div>
 
-        {/* --- Detailed Marks --- */}
-        <h3 className="text-lg font-medium mb-4">Detailed Subject Marks</h3>
-
         <Card>
+          <CardHeader>
+            <CardTitle>Detailed Subject Marks</CardTitle>
+          </CardHeader>
           <CardContent className="pt-6">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b">
                     <th className="text-left py-2">Subject</th>
-                    <th className="text-center py-2">Assignments (50)</th>
-                    <th className="text-center py-2">Midterm (50)</th>
-                    <th className="text-center py-2">Final (20)</th>
+                    <th className="text-center py-2">Assignments</th>
+                    <th className="text-center py-2">Midterm</th>
+                    <th className="text-center py-2">Final</th>
                     <th className="text-center py-2">Total</th>
                     <th className="text-center py-2">Grade</th>
                   </tr>
@@ -248,45 +219,73 @@ const Marks = () => {
                 <tbody>
                   {prepareStudentChartData().map((subject) => {
                     const percentage = (subject.total / 120) * 100;
-                    const { grade } = calculateGrade(percentage);
-
+                    const grade = calculateGrade(percentage);
                     return (
                       <tr key={subject.name} className="border-b">
-                        <td className="py-3 font-medium">{subject.name}</td>
+                        <td className="py-3">{subject.name}</td>
                         <td className="text-center py-3">{subject.assignments}</td>
                         <td className="text-center py-3">{subject.midterm}</td>
                         <td className="text-center py-3">{subject.final}</td>
                         <td className="text-center py-3 font-medium">{subject.total}</td>
-                        <td className="text-center py-3">
-                          <span className={`font-bold ${
-                            grade === 'F' ? 'text-red-600' :
-                            grade === 'O' || grade === 'A+' ? 'text-green-600' :
-                            'text-amber-600'
-                          }`}>
-                            {grade}
-                          </span>
-                        </td>
+                        <td className="text-center py-3 font-bold">{grade}</td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
+            <Button variant="outline" className="mt-4" onClick={generatePDF}>
+              <FileDown className="mr-2 h-4 w-4" />
+              Download Report as PDF
+            </Button>
           </CardContent>
         </Card>
       </Layout>
     );
-  } else {
-    return (
-      <Layout title="Faculty Marks Management">
-        {/* Faculty Side Work Here */}
-        {/* Same structure, we can continue after student part working perfectly */}
-        <div className="text-gray-600 p-10">
-          Faculty view is still under construction in this version.
-        </div>
-      </Layout>
-    );
   }
+
+  // === Faculty View ===
+  const groupedData = groupMarksByStudent();
+
+  return (
+    <Layout title="Faculty - Manage Marks">
+      <Card>
+        <CardHeader>
+          <CardTitle>Faculty Marks Management</CardTitle>
+          <CardDescription>Manage and review marks across sections</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-2">Student Name</th>
+                  <th className="text-center py-2">Assignments</th>
+                  <th className="text-center py-2">Midterm</th>
+                  <th className="text-center py-2">Final</th>
+                  <th className="text-center py-2">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupedData.map((student: any) => {
+                  const total = student.assignments + student.midterm + student.final;
+                  return (
+                    <tr key={student.studentId} className="border-b">
+                      <td className="py-3 font-medium">{student.studentName}</td>
+                      <td className="text-center py-3">{student.assignments}</td>
+                      <td className="text-center py-3">{student.midterm}</td>
+                      <td className="text-center py-3">{student.final}</td>
+                      <td className="text-center py-3 font-medium">{total}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    </Layout>
+  );
 };
 
 export default Marks;

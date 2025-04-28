@@ -28,8 +28,10 @@ export async function fetchStudentsWithFees() {
 }
 
 export async function fetchSections() {
-  const response = await fetch(`${API_URL}/sections`);
-  if (!response.ok) throw new Error("Failed to fetch sections");
+  const response = await fetch(`${import.meta.env.VITE_API_URL}/sections`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch sections");
+  }
   return response.json();
 }
 
