@@ -1,12 +1,9 @@
-// server.js
-
 import dotenv from 'dotenv';
 dotenv.config();
 import cors from 'cors';
 import express from 'express';
 import pool from './db/connection.js';
 
-// Routers
 import departmentsRouter from './routes/departments.js';
 import coursesRouter from './routes/courses.js';
 import studentsRouter from './routes/students.js';
@@ -15,7 +12,8 @@ import attendanceRouter from './routes/attendance.js';
 import marksRouter from './routes/marks.js';
 import noticesRouter from './routes/notices.js';
 import loginRouter from './routes/login.js';
-import timetableRouter from './routes/timetable.js'; // ✅ imported
+import timetableRouter from './routes/timetable.js'; 
+import importantTopicsRouter from './routes/importantTopics.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -49,15 +47,9 @@ app.use('/api/attendance', attendanceRouter);
 app.use('/api/marks', marksRouter);
 app.use('/api/notices', noticesRouter);
 app.use('/api/login', loginRouter);
-
-// Timetable Router ✅ (for your timetable page)
+app.use('/api/important-topics', importantTopicsRouter);
 app.use('/api/timetable', timetableRouter);
 
-// ================================
-// ✨ NEW ROUTES (Exams Related APIs)
-// ================================
-
-// 1. Fetch all Exams
 app.get('/api/exams', async (req, res) => {
   try {
     const [exams] = await pool.query('SELECT * FROM exams');
@@ -68,7 +60,6 @@ app.get('/api/exams', async (req, res) => {
   }
 });
 
-// 2. Fetch Subjects for specific Exam
 app.get('/api/exam-subjects/:examId', async (req, res) => {
   const { examId } = req.params;
   try {
@@ -85,7 +76,6 @@ app.get('/api/exam-subjects/:examId', async (req, res) => {
   }
 });
 
-// 3. Fetch Students with Fee Status
 app.get('/api/students-with-fees', async (req, res) => {
   try {
     const [students] = await pool.query(`
@@ -107,7 +97,6 @@ app.get('/api/students-with-fees', async (req, res) => {
   }
 });
 
-// 4. Fetch all Sections
 app.get('/api/sections', async (req, res) => {
   try {
     const [sections] = await pool.query('SELECT DISTINCT section FROM students');
@@ -121,11 +110,6 @@ app.get('/api/sections', async (req, res) => {
   }
 });
 
-// ================================
-// ✨ END NEW ROUTES
-// ================================
-
-// Server Listen
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Database connection parameters:`);

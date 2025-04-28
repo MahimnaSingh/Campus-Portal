@@ -2,12 +2,7 @@
 import { Department, Course, Student, Faculty, Attendance, Mark, Notice } from "@/types/database";
 import axios from "axios";
 
-// Use an environment variable with a fallback for local development
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001/api";
-
-// ---------------------------------------------
-// Exams APIs
-// ---------------------------------------------
 
 export async function fetchExams() {
   const response = await fetch(`${API_URL}/exams`);
@@ -146,8 +141,6 @@ export async function loginFaculty(facultyId: string, password: string) {
   return response.json();
 }
 
-// lib/api.ts
-
 export const updateMarks = async ({
   markId,
   marksObtained,
@@ -160,3 +153,31 @@ export const updateMarks = async ({
   });
   return response.data;
 };
+
+export async function fetchSubjectsWithFaculty() {
+  const response = await fetch(`${API_URL}/important-topics/subjects`);
+  if (!response.ok) throw new Error("Failed to fetch subjects");
+  return response.json();
+}
+
+export async function fetchImportantTopics(courseId: string) {
+  const response = await fetch(`${API_URL}/important-topics/${courseId}`);
+  if (!response.ok) throw new Error("Failed to fetch important topics");
+  return response.json();
+}
+
+export async function uploadImportantTopic(data: {
+  courseId: string;
+  facultyId: string;
+  topic: string;
+  description?: string;
+  importantQuestions?: string;
+}) {
+  const response = await fetch(`${API_URL}/important-topics`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error("Failed to upload topic");
+  return response.json();
+}
