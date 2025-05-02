@@ -18,6 +18,8 @@ import loginRouter from './routes/login.js';
 import timetableRouter from './routes/timetable.js';
 import importantTopicsRouter from './routes/importantTopics.js';
 import studyMaterialsRouter from './routes/studyMaterials.js';
+import enrollmentsRouter from './routes/enrollments.js';
+import facultyAdvisorRouter from './routes/facultyAdvisor.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -52,6 +54,8 @@ app.use('/api/login', loginRouter);
 app.use('/api/timetable', timetableRouter);
 app.use('/api/important-topics', importantTopicsRouter);
 app.use('/api/study-materials', studyMaterialsRouter);
+app.use('/api/enrollments', enrollmentsRouter);
+app.use('/api/faculty-advisor', facultyAdvisorRouter);
 
 // Exams-related APIs
 app.get('/api/exams', async (req, res) => {

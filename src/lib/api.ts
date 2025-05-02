@@ -94,8 +94,10 @@ export async function fetchNotices(): Promise<Notice[]> {
 }
 
 export async function fetchStudentProfile(studentId: string): Promise<Student> {
-  const response = await fetch(`${API_URL}/student/${studentId}`);
-  if (!response.ok) throw new Error("Failed to fetch student profile");
+  const response = await fetch(`${API_URL}/students/${studentId}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch student profile (${response.status})`);
+  }
   return response.json();
 }
 
@@ -191,14 +193,12 @@ export async function fetchCoursesWithFaculty(): Promise<any[]> {
   return res.json();
 }
 
-// Fetch materials for a course
 export async function fetchStudyMaterials(courseId: string): Promise<any[]> {
   const res = await fetch(`${API_URL}/study-materials/${courseId}`);
   if (!res.ok) throw new Error(`Failed to fetch study materials: ${res.status}`);
   return res.json();
 }
 
-// Upload a new material
 export async function uploadStudyMaterial(data: {
   courseId: string;
   facultyId: string;
@@ -213,4 +213,16 @@ export async function uploadStudyMaterial(data: {
   });
   if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
   return res.json();
+}
+
+export async function fetchEnrollments(studentId: string) {
+  const res = await fetch(`${API_URL}/enrollments?studentId=${studentId}`);
+  if (!res.ok) throw new Error('Failed to fetch enrollments');
+  return res.json();  // [{ course_id }, …]
+}
+
+export async function fetchClassTeacher(section: string, degreeId: number) {
+  const res = await fetch(`${API_URL}/faculty-advisor?section=${section}&degreeId=${degreeId}`);
+  if (!res.ok) throw new Error('Failed to fetch class teacher');
+  return res.json();  // { faculty_id, name, email, phone, … }
 }

@@ -53,4 +53,19 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+router.get("/:studentId", async (req, res) => {
+  const { studentId } = req.params;
+  try {
+    const [rows] = await pool.query(
+      `SELECT * FROM students WHERE student_id = ?`,
+      [studentId]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Not found" });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
 export default router;
