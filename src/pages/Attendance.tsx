@@ -62,135 +62,111 @@ const calculateAttendanceProgress = (currentPercentage: number) => {
 };
 
 export default function Attendance() {
-  // Role determination
+  // Role + Student ID
   const [userRole, setUserRole] = useState<"student" | "faculty">("student");
+  const [studentId, setStudentId] = useState<string | null>(null);
+
   useEffect(() => {
-    const stored = localStorage.getItem("userRole") as "student" | "faculty" | null;
-    if (stored) setUserRole(stored);
+    const storedRole = localStorage.getItem("userRole") as
+      | "student"
+      | "faculty"
+      | null;
+    if (storedRole) setUserRole(storedRole);
+
+    const id = localStorage.getItem("userId");
+    if (id) setStudentId(id);
   }, []);
 
   // Shared state
   const [attendanceData, setAttendanceData] = useState<AttendanceType[]>([]);
   const [courseList, setCourseList] = useState<{ id: string; name: string }[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<string>("");
-  const [lastUpdated, setLastUpdated] = useState(new Date().toISOString());
-  const [editMode, setEditMode] = useState(false);
-  const [deltaMap, setDeltaMap] = useState<{
-    [attendanceId: number]: { present: number; absent: number };
-  }>({});
+  const [lastUpdated, setLastUpdated] = useState<string>(new Date().toISOString());
+  const [editMode, setEditMode] = useState<boolean>(false);
+  const [deltaMap, setDeltaMap] = useState<Record<number, { present: number; absent: number }>>({});
 
   const queryClient = useQueryClient();
 
-  // Fetch data
+  // Fetch from API
   const { data: dbAttendance, refetch } = useQuery({
     queryKey: ["attendance"],
     queryFn: fetchAttendance,
   });
 
-  // Mutation
+  // Mutation for updates by attendanceId
   const updateAttendanceMutation = useMutation({
-    mutationFn: async (params: {
-      studentId: string;
-      courseId: string;
-      date: string;
-      incHours: number;
-      isPresent: boolean;
-    }) => {
-      console.log("💥 Calling update-hours with:", params);
-      console.log("🔗 API URL:", import.meta.env.VITE_API_URL);
-
+    mutationFn: async (params: { attendanceId: number; incHours: number; isPresent: boolean }) => {
       const res = await fetch(
-        `${import.meta.env.VITE_API_URL}/attendance/update-hours`,
+        `${import.meta.env.VITE_API_URL}/attendance/${params.attendanceId}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(params),
+          body: JSON.stringify({
+            incHours: params.incHours,
+            isPresent: params.isPresent,
+          }),
         }
       );
       if (!res.ok) {
         const text = await res.text();
-        console.error("❌ update-hours failed:", res.status, text);
         throw new Error(`HTTP ${res.status}: ${text}`);
       }
-
-      const data = await res.json();
-      console.log("✅ update-hours response:", data);
-      return data;
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["attendance"] });
       toast({ title: "Success", description: "Attendance updated successfully" });
-    },
+    },    
     onError: (err) => {
       toast({
         title: "Error",
         description: err instanceof Error ? err.message : "Failed to update attendance",
         variant: "destructive",
       });
-      console.error("Mutation error:", err);
     },
   });
   const { mutateAsync: updateMutateAsync } = updateAttendanceMutation;
 
-  // Build derived state when data arrives
+  // Seed local state when data arrives
   useEffect(() => {
-    if (dbAttendance) {
-      setAttendanceData(dbAttendance);
-      const map: Record<string, string> = {};
-      dbAttendance.forEach((a) => {
-        map[a.course_id] = a.course_name || a.course_id;
-      });
-      const list = Object.entries(map).map(([id, name]) => ({ id, name }));
-      setCourseList(list);
-      if (!selectedCourse && list.length) setSelectedCourse(list[0].id);
-      setDeltaMap({});
-    }
-  }, [dbAttendance]);
+    if (!dbAttendance) return;
+    setAttendanceData(dbAttendance);
 
-  // Handlers
+    // Build course list
+    const map: Record<string, string> = {};
+    dbAttendance.forEach((a) => {
+      map[a.course_id] = a.course_name || a.course_id;
+    });
+    const list = Object.entries(map).map(([id, name]) => ({ id, name }));
+    setCourseList(list);
+    if (!selectedCourse && list.length) setSelectedCourse(list[0].id);
+
+    // Fallback studentId
+    if (userRole === "student" && !studentId && dbAttendance.length) {
+      setStudentId(dbAttendance[0].student_id.toString());
+    }
+
+    setDeltaMap({});
+  }, [dbAttendance, selectedCourse, studentId, userRole]);
+
+  // Handlers: edit / cancel / save / local bump
   const toggleEditMode = () => setEditMode((v) => !v);
   const cancelEdit = () => {
     setDeltaMap({});
     setEditMode(false);
   };
+
   const onSave = async () => {
-    const today = new Date().toISOString().split("T")[0]; // "YYYY-MM-DD"
-
     const tasks: Promise<any>[] = [];
-
-    Object.entries(deltaMap).forEach(([idStr, { present, absent }]) => {
-      const id = Number(idStr);
-      const att = attendanceData.find((a) => a.attendance_id === id);
-      if (!att) return;
-
-      const formattedDate = att.date
-        ? new Date(att.date).toISOString().split("T")[0]
-        : today;
-
-      if (present !== 0) {
-        tasks.push(
-          updateMutateAsync({
-            studentId: att.student_id,
-            courseId: att.course_id,
-            date: formattedDate,
-            incHours: present,
-            isPresent: true,
-          })
-        );
+    for (const [idStr, { present, absent }] of Object.entries(deltaMap)) {
+      const attendanceId = Number(idStr);
+      if (present > 0) {
+        tasks.push(updateMutateAsync({ attendanceId, incHours: present, isPresent: true }));
       }
-      if (absent !== 0) {
-        tasks.push(
-          updateMutateAsync({
-            studentId: att.student_id,
-            courseId: att.course_id,
-            date: formattedDate,
-            incHours: absent,
-            isPresent: false,
-          })
-        );
+      if (absent > 0) {
+        tasks.push(updateMutateAsync({ attendanceId, incHours: absent, isPresent: false }));
       }
-    });
-
+    }
     await Promise.all(tasks);
     setDeltaMap({});
     setEditMode(false);
@@ -198,13 +174,9 @@ export default function Attendance() {
     refetch();
   };
 
-  const handleLocalUpdate = (
-    id: number,
-    isPresent: boolean,
-    delta: number
-  ) => {
+  const handleLocalUpdate = (id: number, isPresent: boolean, delta: number = 1) => {
     setDeltaMap((prev) => {
-      const existing = prev[id] || { present: 0, absent: 0 };
+      const existing = prev[id] ?? { present: 0, absent: 0 };
       const updated = isPresent
         ? { ...existing, present: existing.present + delta }
         : { ...existing, absent: existing.absent + delta };
@@ -214,15 +186,24 @@ export default function Attendance() {
 
   // ─── STUDENT VIEW ─────────────────────────────────────────────────────────
   if (userRole === "student") {
+    if (!studentId) {
+      return (
+        <Layout title="Attendance">
+          <p className="text-center py-10">Loading your attendance…</p>
+        </Layout>
+      );
+    }
+
+    const myAttendance = attendanceData.filter((a) => a.student_id.toString() === studentId);
     const overall =
-      attendanceData.length > 0
+      myAttendance.length > 0
         ? Math.round(
-            attendanceData.reduce((sum, a) => {
+            myAttendance.reduce((sum, a) => {
               const pct = a.total_classes
                 ? (100 * (a.hours_present || 0)) / a.total_classes
                 : 0;
               return sum + pct;
-            }, 0) / attendanceData.length
+            }, 0) / myAttendance.length
           )
         : 0;
     const overallProg = calculateAttendanceProgress(overall);
@@ -270,59 +251,64 @@ export default function Attendance() {
           </CardContent>
         </Card>
 
-        <h3 className="text-lg font-medium mb-4">Subject-wise Attendance</h3>
-        <div className="space-y-4">
-          {attendanceData.map((a) => {
-            const pct = a.total_classes
-              ? Math.round((100 * (a.hours_present || 0)) / a.total_classes)
-              : 0;
-            const prog = calculateAttendanceProgress(pct);
-            return (
-              <Card key={a.attendance_id}>
-                <CardContent className="p-4">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h4 className="font-medium">{a.course_name}</h4>
-                      <p className="text-sm text-gray-600">{a.course_id}</p>
-                      <p className="text-sm text-gray-600 mt-1">
-                        Faculty: {a.marked_by_faculty || "N/A"}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <div
-                        className={`text-2xl font-bold ${
-                          pct >= 90
-                            ? "text-green-600"
-                            : pct >= 75
-                            ? "text-amber-600"
-                            : "text-red-600"
-                        }`}
-                      >
-                        {pct}%
+        <h3 className="text-lg font-medium mb-4">Your Subject-wise Attendance</h3>
+
+        {myAttendance.length === 0 ? (
+          <p className="text-center text-gray-500">No attendance records found.</p>
+        ) : (
+          <div className="space-y-4">
+            {myAttendance.map((a) => {
+              const pct = a.total_classes
+                ? Math.round((100 * (a.hours_present || 0)) / a.total_classes)
+                : 0;
+              const prog = calculateAttendanceProgress(pct);
+              return (
+                <Card key={a.attendance_id}>
+                  <CardContent className="p-4">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h4 className="font-medium">{a.course_name}</h4>
+                        <p className="text-sm text-gray-600">{a.course_id}</p>
+                        <p className="text-sm text-gray-600 mt-1">
+                          Faculty: {a.marked_by_faculty || "N/A"}
+                        </p>
                       </div>
-                      <p className="text-xs text-gray-500">
-                        Attended: {Math.round(a.hours_present || 0)}/
-                        {Math.round(a.total_classes || 0)}
-                      </p>
-                      <div
-                        className={`flex items-center text-xs mt-1 ${
-                          prog.canReach75 ? "text-blue-600" : "text-red-600"
-                        }`}
-                      >
-                        {pct < 75 ? (
-                          <AlertCircle className="h-3 w-3 mr-1" />
-                        ) : (
-                          <CheckCircle className="h-3 w-3 mr-1" />
-                        )}
-                        {prog.message}
+                      <div className="text-right">
+                        <div
+                          className={`text-2xl font-bold ${
+                            pct >= 90
+                              ? "text-green-600"
+                              : pct >= 75
+                              ? "text-amber-600"
+                              : "text-red-600"
+                          }`}
+                        >
+                          {pct}%
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          Attended: {Math.round(a.hours_present || 0)}/
+                          {Math.round(a.total_classes || 0)}
+                        </p>
+                        <div
+                          className={`flex items-center text-xs mt-1 ${
+                            prog.canReach75 ? "text-blue-600" : "text-red-600"
+                          }`}
+                        >
+                          {pct < 75 ? (
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                          ) : (
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                          )}
+                          {prog.message}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </Layout>
     );
   }
@@ -340,6 +326,7 @@ export default function Attendance() {
           <CardDescription>Manage student attendance per course</CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Controls */}
           <div className="grid gap-4 mb-4 md:grid-cols-4">
             <div>
               <label className="text-sm font-medium mb-1 block">Course</label>
@@ -374,7 +361,6 @@ export default function Attendance() {
                   </Button>
                 </>
               )}
-
               <Button onClick={() => void refetch()} variant="outline">
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Refresh Data
@@ -386,163 +372,160 @@ export default function Attendance() {
               Last updated: {new Date(lastUpdated).toLocaleString()}
             </div>
           </div>
+
+          {/* Table */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle>
+                Student Attendance:{" "}
+                {courseList.find((c) => c.id === selectedCourse)?.name ||
+                  "All Courses"}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-2 font-medium">Roll No.</th>
+                      <th className="text-left py-2 font-medium">Student Name</th>
+                      <th className="text-center py-2 font-medium">
+                        Hours Present
+                      </th>
+                      <th className="text-center py-2 font-medium">Hours Absent</th>
+                      <th className="text-center py-2 font-medium">Total Classes</th>
+                      <th className="text-center py-2 font-medium">Attendance %</th>
+                      <th className="text-left py-2 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((a) => {
+                      const basePresent = Math.round(a.hours_present || 0);
+                      const baseAbsent = Math.round(a.hours_absent || 0);
+                      const { present, absent } = deltaMap[a.attendance_id] || {
+                        present: 0,
+                        absent: 0,
+                      };
+                      const displayedPresent = basePresent + present;
+                      const displayedAbsent = baseAbsent + absent;
+                      const totalClasses = a.total_classes || 0;
+                      const pct = totalClasses
+                        ? Math.round((100 * displayedPresent) / totalClasses)
+                        : 0;
+                      const prog = calculateAttendanceProgress(pct);
+
+                      return (
+                        <tr
+                          key={`${a.student_id}-${a.course_id}`}
+                          className="border-b hover:bg-gray-50"
+                        >
+                          <td className="py-3">{a.student_id}</td>
+                          <td className="py-3">{a.student_name}</td>
+
+                          {/* Hours Present */}
+                          <td className="py-3 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={!editMode || displayedPresent <= 0}
+                                onClick={() =>
+                                  handleLocalUpdate(a.attendance_id, true, -1)
+                                }
+                              >
+                                <Minus className="h-4 w-4" />
+                              </Button>
+                              <span className="mx-2">{displayedPresent}</span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={!editMode}
+                                onClick={() =>
+                                  handleLocalUpdate(a.attendance_id, true, 1)
+                                }
+                              >
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </td>
+
+                          {/* Hours Absent */}
+                          <td className="py-3 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={!editMode || displayedAbsent <= 0}
+                                onClick={() =>
+                                  handleLocalUpdate(a.attendance_id, false, -1)
+                                }
+                              >
+                                <Minus className="h-4 w-4" />
+                              </Button>
+                              <span className="mx-2">{displayedAbsent}</span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={!editMode}
+                                onClick={() =>
+                                  handleLocalUpdate(a.attendance_id, false, 1)
+                                }
+                              >
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </td>
+
+                          <td className="py-3 text-center">{totalClasses}</td>
+                          <td className="py-3 text-center">
+                            <span
+                              className={`font-medium ${
+                                pct < 75 ? "text-red-600" : "text-green-600"
+                              }`}
+                            >
+                              {pct}%
+                            </span>
+                          </td>
+                          <td className="py-3">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  {pct < 75 ? (
+                                    <Badge
+                                      variant="destructive"
+                                      className="flex items-center w-fit"
+                                    >
+                                      <AlertCircle className="h-3 w-3 mr-1" />
+                                      Detention Risk
+                                    </Badge>
+                                  ) : (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-green-50 text-green-700 border-green-200 flex items-center w-fit"
+                                    >
+                                      <CheckCircle className="h-3 w-3 mr-1" />
+                                      Good Standing
+                                    </Badge>
+                                  )}
+                                </TooltipTrigger>
+                                <TooltipContent>{prog.message}</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+            <CardFooter className="flex justify-between">
+              <div className="text-sm text-gray-500">
+                Showing {filtered.length} student(s)
+              </div>
+            </CardFooter>
+          </Card>
         </CardContent>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle>
-              Student Attendance:{" "}
-              {courseList.find((c) => c.id === selectedCourse)?.name ||
-                "All Courses"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-2 font-medium">Roll No.</th>
-                    <th className="text-left py-2 font-medium">Student Name</th>
-                    <th className="text-center py-2 font-medium">
-                      Hours Present
-                    </th>
-                    <th className="text-center py-2 font-medium">Hours Absent</th>
-                    <th className="text-center py-2 font-medium">
-                      Total Classes
-                    </th>
-                    <th className="text-center py-2 font-medium">
-                      Attendance %
-                    </th>
-                    <th className="text-left py-2 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((a) => {
-                    const basePresent = Math.round(a.hours_present || 0);
-                    const baseAbsent = Math.round(a.hours_absent || 0);
-                    const del = deltaMap[a.attendance_id] || {
-                      present: 0,
-                      absent: 0,
-                    };
-                    const displayedPresent = basePresent + del.present;
-                    const displayedAbsent = baseAbsent + del.absent;
-                    const totalClasses = a.total_classes || 0;
-                    const pct = totalClasses
-                      ? Math.round((100 * displayedPresent) / totalClasses)
-                      : 0;
-                    const prog = calculateAttendanceProgress(pct);
-
-                    return (
-                      <tr
-                        key={`${a.student_id}-${a.course_id}`}
-                        className="border-b hover:bg-gray-50"
-                      >
-                        <td className="py-3">{a.student_id}</td>
-                        <td className="py-3">{a.student_name}</td>
-
-                        {/* HOURS PRESENT */}
-                        <td className="py-3 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={!editMode}
-                              onClick={() =>
-                                handleLocalUpdate(a.attendance_id, true, +1)
-                              }
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                            <span className="mx-2">{displayedPresent}</span>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={!editMode || displayedPresent <= 0}
-                              onClick={() =>
-                                handleLocalUpdate(a.attendance_id, true, -1)
-                              }
-                            >
-                              <Minus className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </td>
-
-                        {/* HOURS ABSENT */}
-                        <td className="py-3 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={!editMode}
-                              onClick={() =>
-                                handleLocalUpdate(a.attendance_id, false, +1)
-                              }
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                            <span className="mx-2">{displayedAbsent}</span>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={!editMode || displayedAbsent <= 0}
-                              onClick={() =>
-                                handleLocalUpdate(a.attendance_id, false, -1)
-                              }
-                            >
-                              <Minus className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </td>
-
-                        <td className="py-3 text-center">{totalClasses}</td>
-                        <td className="py-3 text-center">
-                          <span
-                            className={`font-medium ${
-                              pct < 75 ? "text-red-600" : "text-green-600"
-                            }`}
-                          >
-                            {pct}%
-                          </span>
-                        </td>
-                        <td className="py-3">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                {pct < 75 ? (
-                                  <Badge
-                                    variant="destructive"
-                                    className="flex items-center w-fit"
-                                  >
-                                    <AlertCircle className="h-3 w-3 mr-1" />
-                                    Detention Risk
-                                  </Badge>
-                                ) : (
-                                  <Badge
-                                    variant="outline"
-                                    className="bg-green-50 text-green-700 border-green-200 flex items-center w-fit"
-                                  >
-                                    <CheckCircle className="h-3 w-3 mr-1" />
-                                    Good Standing
-                                  </Badge>
-                                )}
-                              </TooltipTrigger>
-                              <TooltipContent>{prog.message}</TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-          <CardFooter className="flex justify-between">
-            <div className="text-sm text-gray-500">
-              Showing {filtered.length} student(s)
-            </div>
-          </CardFooter>
-        </Card>
       </Card>
     </Layout>
   );

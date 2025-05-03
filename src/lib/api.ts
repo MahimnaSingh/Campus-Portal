@@ -22,12 +22,18 @@ export async function fetchStudentsWithFees() {
   return response.json();
 }
 
-export async function fetchSections() {
-  const response = await fetch(`${import.meta.env.VITE_API_URL}/sections`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch sections");
+export async function fetchSections(): Promise<string[]> {
+  const res = await fetch(`${API_URL}/sections`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`fetchSections failed: ${res.status} ${text}`);
   }
-  return response.json();
+  const data = await res.json();
+  // Optionally validate that data is an array of strings:
+  if (!Array.isArray(data) || !data.every((x) => typeof x === "string")) {
+    throw new Error("fetchSections: unexpected response format");
+  }
+  return data;
 }
 
 export async function fetchDepartments(): Promise<Department[]> {
@@ -226,3 +232,5 @@ export async function fetchClassTeacher(section: string, degreeId: number) {
   if (!res.ok) throw new Error('Failed to fetch class teacher');
   return res.json();  // { faculty_id, name, email, phone, … }
 }
+
+  

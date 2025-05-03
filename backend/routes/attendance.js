@@ -14,9 +14,9 @@ router.get('/', async (req, res) => {
         CONCAT(s.first_name, ' ', s.last_name) AS student_name,
         CONCAT(f.first_name, ' ', f.last_name) AS faculty_name
       FROM attendance a
-      LEFT JOIN courses  c ON a.course_id       = c.course_id
-      LEFT JOIN students s ON a.student_id      = s.student_id
-      LEFT JOIN faculty  f ON a.marked_by_faculty = f.faculty_id
+      LEFT JOIN courses  c ON a.course_id          = c.course_id
+      LEFT JOIN students s ON a.student_id         = s.student_id
+      LEFT JOIN faculty  f ON a.marked_by_faculty   = f.faculty_id
     `;
     const params = [];
 
@@ -38,35 +38,28 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.put('/update-hours', async (req, res) => {
-  const { studentId, courseId, date, incHours, isPresent, facultyId } = req.body;
+// UPDATE by attendance_id
+router.put('/:attendanceId', async (req, res) => {
+  const { attendanceId } = req.params;
+  const { incHours, isPresent, facultyId } = req.body;
 
   if (
-    !studentId ||
-    !courseId ||
-    !date ||
     typeof incHours !== 'number' ||
     typeof isPresent !== 'boolean'
   ) {
     return res.status(400).json({ error: 'Missing or invalid fields.' });
   }
 
-  const dateOnly = date.split('T')[0];
-
   try {
     const [rows] = await pool.query(
-      `SELECT attendance_id, hours_present, hours_absent, total_classes
+      `SELECT hours_present, hours_absent, total_classes
          FROM attendance
-        WHERE student_id = ?
-          AND course_id  = ?
-          AND date       = ?`,
-      [studentId, courseId, dateOnly]
+        WHERE attendance_id = ?`,
+      [attendanceId]
     );
 
     if (rows.length === 0) {
-      return res.status(404).json({
-        error: 'No attendance record found to update for this student/course/date.',
-      });
+      return res.status(404).json({ error: 'No record with that id.' });
     }
 
     const at = rows[0];
@@ -98,7 +91,7 @@ router.put('/update-hours', async (req, res) => {
         totalClasses,
         status,
         facultyId || null,
-        at.attendance_id,
+        attendanceId,
       ]
     );
 
