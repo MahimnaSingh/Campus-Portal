@@ -62,9 +62,10 @@ const calculateAttendanceProgress = (currentPercentage: number) => {
 };
 
 export default function Attendance() {
-  // Role + Student ID
+  // Role + IDs
   const [userRole, setUserRole] = useState<"student" | "faculty">("student");
   const [studentId, setStudentId] = useState<string | null>(null);
+  const [facultyId, setFacultyId] = useState<string | null>(null);
 
   useEffect(() => {
     const storedRole = localStorage.getItem("userRole") as
@@ -74,7 +75,10 @@ export default function Attendance() {
     if (storedRole) setUserRole(storedRole);
 
     const id = localStorage.getItem("userId");
-    if (id) setStudentId(id);
+    if (id) {
+      if (storedRole === "student")  setStudentId(id);
+      if (storedRole === "faculty") setFacultyId(id);
+    }
   }, []);
 
   // Shared state
@@ -102,8 +106,9 @@ export default function Attendance() {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            incHours: params.incHours,
-            isPresent: params.isPresent,
+            incHours:    params.incHours,
+            isPresent:  params.isPresent,
+            facultyId:  facultyId
           }),
         }
       );
@@ -116,7 +121,7 @@ export default function Attendance() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["attendance"] });
       toast({ title: "Success", description: "Attendance updated successfully" });
-    },    
+    },
     onError: (err) => {
       toast({
         title: "Error",
@@ -147,7 +152,7 @@ export default function Attendance() {
     }
 
     setDeltaMap({});
-  }, [dbAttendance, selectedCourse, studentId, userRole]);
+  }, [dbAttendance]);
 
   // Handlers: edit / cancel / save / local bump
   const toggleEditMode = () => setEditMode((v) => !v);
@@ -270,7 +275,7 @@ export default function Attendance() {
                         <h4 className="font-medium">{a.course_name}</h4>
                         <p className="text-sm text-gray-600">{a.course_id}</p>
                         <p className="text-sm text-gray-600 mt-1">
-                          Faculty: {a.marked_by_faculty || "N/A"}
+                          Faculty: {a.faculty_name || "N/A"}
                         </p>
                       </div>
                       <div className="text-right">

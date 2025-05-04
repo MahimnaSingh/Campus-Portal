@@ -1,8 +1,15 @@
+// routes/attendance.js
 import express from 'express';
 import pool from '../db/connection.js';
 
 const router = express.Router();
 
+/**
+ * GET /api/attendance
+ * - ?studentId=… filters by a.student_id
+ * - ?facultyId=… filters by a.marked_by_faculty
+ * Returns student_name, course_name, and faculty_name (who last edited).
+ */
 router.get('/', async (req, res) => {
   try {
     const { studentId, facultyId } = req.query;
@@ -11,8 +18,8 @@ router.get('/', async (req, res) => {
         a.*,
         c.course_name,
         s.section,
-        CONCAT(s.first_name, ' ', s.last_name) AS student_name,
-        CONCAT(f.first_name, ' ', f.last_name) AS faculty_name
+        CONCAT(s.first_name, ' ', s.last_name)   AS student_name,
+        CONCAT(f.first_name, ' ', f.last_name)   AS faculty_name
       FROM attendance a
       LEFT JOIN courses  c ON a.course_id          = c.course_id
       LEFT JOIN students s ON a.student_id         = s.student_id
@@ -32,25 +39,30 @@ router.get('/', async (req, res) => {
     res.json(rows);
   } catch (error) {
     console.error('Error fetching attendance:', error);
-    res
-      .status(500)
-      .json({ error: 'Failed to fetch attendance', details: error.message });
+    res.status(500).json({
+      error: 'Failed to fetch attendance',
+      details: error.message
+    });
   }
 });
 
-// UPDATE by attendance_id
+/**
+ * PUT /api/attendance/:attendanceId
+ * Body: { incHours: number, isPresent: boolean, facultyId?: string }
+ * Updates hours_present/absent/total_classes, status, and marked_by_faculty.
+ */
 router.put('/:attendanceId', async (req, res) => {
   const { attendanceId } = req.params;
   const { incHours, isPresent, facultyId } = req.body;
 
-  if (
-    typeof incHours !== 'number' ||
-    typeof isPresent !== 'boolean'
-  ) {
-    return res.status(400).json({ error: 'Missing or invalid fields.' });
+  if (typeof incHours !== 'number' || typeof isPresent !== 'boolean') {
+    return res
+      .status(400)
+      .json({ error: 'Missing or invalid fields.' });
   }
 
   try {
+    // fetch existing counts
     const [rows] = await pool.query(
       `SELECT hours_present, hours_absent, total_classes
          FROM attendance
@@ -59,7 +71,9 @@ router.put('/:attendanceId', async (req, res) => {
     );
 
     if (rows.length === 0) {
-      return res.status(404).json({ error: 'No record with that id.' });
+      return res
+        .status(404)
+        .json({ error: 'No record with that id.' });
     }
 
     const at = rows[0];
@@ -74,7 +88,9 @@ router.put('/:attendanceId', async (req, res) => {
     }
     totalClasses += incHours;
 
-    const status = (hoursPresent / totalClasses) >= 0.75 ? 'present' : 'absent';
+    const status = (hoursPresent / totalClasses) >= 0.75
+      ? 'present'
+      : 'absent';
 
     await pool.query(
       `UPDATE attendance
@@ -95,12 +111,13 @@ router.put('/:attendanceId', async (req, res) => {
       ]
     );
 
-    return res.json({ success: true, updated: true });
+    res.json({ success: true });
   } catch (error) {
     console.error('Error updating attendance:', error);
-    res
-      .status(500)
-      .json({ error: 'Failed to update attendance', details: error.message });
+    res.status(500).json({
+      error: 'Failed to update attendance',
+      details: error.message
+    });
   }
 });
 

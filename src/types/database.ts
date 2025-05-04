@@ -1,4 +1,3 @@
-
 export interface Department {
   department_id: number;
   department_name: string;
@@ -72,8 +71,9 @@ export interface Attendance {
   total_classes?: number;
   hours_present?: number;
   hours_absent?: number;
-  student_name?: string; // Added this field to fix the TypeScript error
-  course_name?: string; // Added for completeness since it's used in the join query
+  student_name?: string;   // from JOIN
+  course_name?: string;    // from JOIN
+  faculty_name?: string;   // the newly added joined field
 }
 
 export interface Mark {
