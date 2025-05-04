@@ -24,15 +24,23 @@ import facultyAdvisorRouter from './routes/facultyAdvisor.js';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Enable CORS and JSON parsing
+// CORS — only allow your React app origin, and allow credentials
 app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin: 'http://localhost:8080',   // <- your frontend origin
+  credentials: true,                 // <- enable Set-Cookie
+  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization']
 }));
+// Handle preflight for all routes
+app.options('*', cors({
+  origin: 'http://localhost:8080',
+  credentials: true
+}));
+
+// JSON body parser
 app.use(express.json());
 
-// Health-check / test
+// Health-check
 app.get('/api/test', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT 1 + 1 AS result');
@@ -42,7 +50,7 @@ app.get('/api/test', async (req, res) => {
   }
 });
 
-// Mount all routers
+// Mount routers
 app.use('/api/departments', departmentsRouter);
 app.use('/api/courses', coursesRouter);
 app.use('/api/students', studentsRouter);
@@ -57,13 +65,12 @@ app.use('/api/study-materials', studyMaterialsRouter);
 app.use('/api/enrollments', enrollmentsRouter);
 app.use('/api/faculty-advisor', facultyAdvisorRouter);
 
-// Exams-related APIs
+// Exams
 app.get('/api/exams', async (req, res) => {
   try {
     const [exams] = await pool.query('SELECT * FROM exams');
     res.json(exams);
   } catch (error) {
-    console.error('Error fetching exams:', error);
     res.status(500).json({ error: 'Failed to fetch exams' });
   }
 });
@@ -79,7 +86,6 @@ app.get('/api/exam-subjects/:examId', async (req, res) => {
     `, [examId]);
     res.json(subjects);
   } catch (error) {
-    console.error('Error fetching exam subjects:', error);
     res.status(500).json({ error: 'Failed to fetch exam subjects' });
   }
 });
@@ -98,12 +104,11 @@ app.get('/api/students-with-fees', async (req, res) => {
     `);
     res.json(students);
   } catch (error) {
-    console.error('Error fetching students with fees:', error);
     res.status(500).json({ error: 'Failed to fetch students with fees' });
   }
 });
 
-// List all sections
+// Sections
 app.get('/api/sections', async (req, res) => {
   try {
     const [sections] = await pool.query('SELECT DISTINCT section FROM students');
@@ -112,15 +117,41 @@ app.get('/api/sections', async (req, res) => {
       name: `Section ${sec.section}`
     })));
   } catch (error) {
-    console.error('Error fetching sections:', error);
     res.status(500).json({ error: 'Failed to fetch sections' });
+  }
+});
+
+// Faculty profile (example)
+app.get('/api/faculty/profile', async (req, res) => {
+  // Assuming you have an auth middleware that sets req.user.facultyId
+  const facultyId = req.user?.facultyId;
+  if (!facultyId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const [rows] = await pool.query('SELECT * FROM faculty WHERE faculty_id = ?', [facultyId]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
+// Optional: custom faculty courses endpoint
+app.get('/api/faculty/courses', async (req, res) => {
+  const facultyId = req.query.facultyId;
+  try {
+    const [courses] = await pool.query(
+      'SELECT * FROM courses WHERE faculty_id = ?',
+      [facultyId]
+    );
+    res.json(courses);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch courses' });
   }
 });
 
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`DB Host: ${process.env.DB_HOST || 'localhost'}`);
-  console.log(`DB User: ${process.env.DB_USER || 'root'}`);
-  console.log(`DB Name: ${process.env.DB_NAME || 'DBMS'}`);
 });
