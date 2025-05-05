@@ -1,63 +1,61 @@
 // src/pages/StudyMaterial.tsx
 import { useState, useEffect } from "react";
 import Layout from "@/components/Layout";
-import {
-  Card, CardContent, CardHeader, CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  BookOpen, Download, Upload, ArrowLeft, FileText,
-} from "lucide-react";
+import { BookOpen, Download, Upload, ArrowLeft, FileText } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-
-import {
-  fetchCoursesWithFaculty,
+  fetchSubjectsWithFaculty,
   fetchStudyMaterials,
   uploadStudyMaterial,
+  CoursePayload,
+  MaterialPayload,
 } from "@/lib/api";
 
-const StudyMaterial = () => {
+export default function StudyMaterial() {
   const { toast } = useToast();
   const [userRole, setUserRole] = useState<"student" | "faculty">("student");
-  const [courses, setCourses] = useState<any[]>([]);
-  const [selectedCourse, setSelectedCourse] = useState<any>(null);
-  const [materials, setMaterials] = useState<any[]>([]);
+  const [courses, setCourses] = useState<CoursePayload[]>([]);
+  const [selectedCourse, setSelectedCourse] = useState<CoursePayload | null>(null);
+  const [materials, setMaterials] = useState<MaterialPayload[]>([]);
   const [loadingMaterials, setLoadingMaterials] = useState(false);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
 
-  // On mount: load userRole and courses
   useEffect(() => {
     const role = (localStorage.getItem("userRole") as "student" | "faculty") || "student";
     setUserRole(role);
-    fetchCoursesWithFaculty()
+    fetchSubjectsWithFaculty()
       .then(setCourses)
-      .catch(err => {
-        console.error(err);
-        toast({ title: "Error", description: "Could not load courses", variant: "destructive" });
-      });
-  }, []);
+      .catch((err) =>
+        toast({
+          title: "Error",
+          description: "Could not load courses",
+          variant: "destructive",
+        })
+      );
+  }, [toast]);
 
-  // Whenever selectedCourse changes, fetch its materials once
   useEffect(() => {
     if (!selectedCourse) return;
-    setMaterials([]);            // clear old
+    setMaterials([]);
     setLoadingMaterials(true);
-    fetchStudyMaterials(selectedCourse.course_id)
-      .then(data => setMaterials(data))
-      .catch(err => {
-        console.error(err);
-        toast({ title: "Error", description: "Could not load materials", variant: "destructive" });
-      })
+    fetchStudyMaterials(selectedCourse.courseId)
+      .then(setMaterials)
+      .catch((err) =>
+        toast({
+          title: "Error",
+          description: "Could not load materials",
+          variant: "destructive",
+        })
+      )
       .finally(() => setLoadingMaterials(false));
-  }, [selectedCourse]);
+  }, [selectedCourse, toast]);
 
-  const handleDownload = (link: string) => window.open(link, "_blank");
+  const handleDownload = (url: string) => window.open(url, "_blank");
 
   const handleUpload = async () => {
     if (!file || !title || !selectedCourse) {
@@ -65,52 +63,59 @@ const StudyMaterial = () => {
       return;
     }
     try {
-      await uploadStudyMaterial({
-        courseId: selectedCourse.course_id,
-        facultyId: localStorage.getItem("facultyId") || "",
-        title,
-        fileType: file.name.split(".").pop() || "pdf",
-        fileLink: `path/to/${file.name}`,
-      });
+      const form = new FormData();
+      form.append("file", file);
+      form.append("courseId", selectedCourse.courseId);
+      form.append("facultyId", selectedCourse.facultyId);
+      form.append("title", title);
+
+      await uploadStudyMaterial(form);
+
       toast({ title: "Uploaded Successfully" });
       setShowUploadDialog(false);
-      // re-fetch materials
+      setTitle("");
+      setFile(null);
+
       setLoadingMaterials(true);
-      const refreshed = await fetchStudyMaterials(selectedCourse.course_id);
+      const refreshed = await fetchStudyMaterials(selectedCourse.courseId);
       setMaterials(refreshed);
-    } catch {
-      toast({ title: "Upload Failed", variant: "destructive" });
+    } catch (err: any) {
+      console.error("Upload error ➡️", err);
+      toast({
+        title: "Upload Failed",
+        description: err.message,
+        variant: "destructive",
+      });
     } finally {
       setLoadingMaterials(false);
     }
   };
 
-  // LIST VIEW
   if (!selectedCourse) {
     return (
       <Layout title="Study Materials">
-        <p className="mb-6 text-gray-600 animate-fadein">
+        <p className="mb-6 text-gray-600">
           {userRole === "student"
             ? "Select a subject to view study materials."
             : "Select a subject to manage study materials."}
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fadein">
-          {courses.map(c => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {courses.map((c) => (
             <Card
-              key={c.course_id}
+              key={c.courseId}
               onClick={() => setSelectedCourse(c)}
               className="cursor-pointer hover:shadow-xl hover:scale-[1.02] transition-all"
             >
               <CardContent className="p-6">
                 <h3 className="font-semibold text-lg flex items-center mb-2">
                   <BookOpen className="h-5 w-5 mr-2 text-primary" />
-                  {c.course_name}
+                  {c.courseName}
                 </h3>
                 <p className="text-sm text-gray-500">
-                  {c.course_id} | Faculty: {c.faculty_name || "Unknown"}
+                  {c.courseId} | Faculty: {c.facultyName}
                 </p>
                 <Button variant="outline" size="sm" className="w-full mt-4">
-                  View Material
+                  View Materials
                 </Button>
               </CardContent>
             </Card>
@@ -120,9 +125,8 @@ const StudyMaterial = () => {
     );
   }
 
-  // DETAIL VIEW
   return (
-    <Layout title={`Study Material: ${selectedCourse.course_name}`}>
+    <Layout title={`Study Material: ${selectedCourse.courseName}`}>
       <div className="flex items-center gap-4 mb-6">
         <Button
           variant="outline"
@@ -143,19 +147,17 @@ const StudyMaterial = () => {
       {loadingMaterials ? (
         <p className="text-gray-500">Loading materials…</p>
       ) : materials.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fadein">
-          {materials.map(m => (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {materials.map((m) => (
             <Card key={m.material_id} className="hover:shadow-md transition-shadow">
               <CardContent className="p-4 flex justify-between items-center">
                 <div>
-                  <h4 className="font-semibold">{m.title}</h4>
-                  <p className="text-sm text-gray-500">{m.file_type.toUpperCase()}</p>
+                  <h4 className="font-semibold">{m.material_title}</h4>
+                  <p className="text-sm text-gray-500">
+                    {m.file_type.split("/")[1]?.toUpperCase() || m.file_type}
+                  </p>
                 </div>
-                <Button
-                  onClick={() => handleDownload(m.file_link)}
-                  variant="outline"
-                  size="sm"
-                >
+                <Button onClick={() => handleDownload(m.file_url)} variant="outline" size="sm">
                   <Download className="h-4 w-4 mr-1" /> Download
                 </Button>
               </CardContent>
@@ -163,7 +165,7 @@ const StudyMaterial = () => {
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center h-60 text-center animate-fadein">
+        <div className="flex flex-col items-center justify-center h-60 text-center">
           <FileText className="h-12 w-12 text-gray-400 mb-4" />
           <h3 className="font-semibold text-lg">No Materials Uploaded Yet</h3>
           <p className="text-gray-500 mt-2">
@@ -177,23 +179,21 @@ const StudyMaterial = () => {
           <DialogHeader>
             <DialogTitle>Upload Study Material</DialogTitle>
             <DialogDescription>
-              Upload PDFs, Videos, or Presentations
+              Upload any file type: PDFs, Word, images, videos…
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
-            <Input
+            <input
+              className="border rounded p-2"
               placeholder="Material Title"
               value={title}
-              onChange={e => setTitle(e.target.value)}
+              onChange={(e) => setTitle(e.target.value)}
             />
-            <Input
+            <input
               type="file"
-              onChange={e => setFile(e.target.files?.[0] || null)}
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
             />
-            <Button
-              onClick={handleUpload}
-              className="w-full hover:scale-105 transition-all"
-            >
+            <Button onClick={handleUpload} className="w-full hover:scale-105 transition-all">
               Upload
             </Button>
           </div>
@@ -201,6 +201,4 @@ const StudyMaterial = () => {
       </Dialog>
     </Layout>
   );
-};
-
-export default StudyMaterial;
+}

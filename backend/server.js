@@ -4,6 +4,7 @@ dotenv.config();
 
 import cors from 'cors';
 import express from 'express';
+import path from "path";
 import pool from './db/connection.js';
 
 // Routers
@@ -17,7 +18,7 @@ import noticesRouter from './routes/notices.js';
 import loginRouter from './routes/login.js';
 import timetableRouter from './routes/timetable.js';
 import importantTopics from "./routes/importantTopics.js";
-import studyMaterialsRouter from './routes/studyMaterials.js';
+import studyMaterials from "./routes/studyMaterials.js";
 import enrollmentsRouter from './routes/enrollments.js';
 import facultyAdvisorRouter from './routes/facultyAdvisor.js';
 
@@ -50,6 +51,10 @@ app.get('/api/test', async (req, res) => {
   }
 });
 
+app.use(
+  "/uploads",
+  express.static(path.join(path.resolve(), "uploads"))
+);
 // Mount routers
 app.use('/api/departments', departmentsRouter);
 app.use('/api/courses', coursesRouter);
@@ -61,10 +66,10 @@ app.use('/api/notices', noticesRouter);
 app.use('/api/login', loginRouter);
 app.use('/api/timetable', timetableRouter);
 app.use("/api/important-topics", importantTopics);
-app.use('/api/study-materials', studyMaterialsRouter);
+app.use("/api/study-materials", studyMaterials);
 app.use('/api/enrollments', enrollmentsRouter);
 app.use('/api/faculty-advisor', facultyAdvisorRouter);
-
+app.use('/uploads', express.static(path.resolve('uploads')));
 // Exams
 app.get('/api/exams', async (req, res) => {
   try {
@@ -151,7 +156,5 @@ app.get('/api/faculty/courses', async (req, res) => {
   }
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(process.env.PORT || 3001, () => console.log("Server running on port", process.env.PORT || 3001));
+
