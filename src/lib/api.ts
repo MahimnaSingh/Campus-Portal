@@ -230,28 +230,35 @@ export async function fetchSubjectsWithFaculty(): Promise<any[]> {
   return response.json();
 }
 
-export async function fetchImportantTopics(courseId: string) {
-  const response = await fetch(`${API_URL}/important-topics/${courseId}`);
-  if (!response.ok) throw new Error("Failed to fetch important topics");
-  return response.json();
+export async function fetchImportantTopics(courseId: string): Promise<TopicPayload[]> {
+  const res = await fetch(`${API_URL}/important-topics/${courseId}`);
+  if (!res.ok) throw new Error('Failed to fetch important topics');
+  return res.json();
 }
 
-export async function uploadImportantTopic(data: {
-  courseId: string;
-  facultyId: string;
-  topic: string;
-  description?: string;
-  importantQuestions?: string;
-}) {
-  const response = await fetch(`${API_URL}/important-topics`, {
+export async function uploadImportantTopic({
+  courseId,
+  facultyId,
+  topic,
+  description,
+  importantQuestions,
+}: UploadParams): Promise<TopicPayload> {
+  const res = await fetch(`${API_URL}/important-topics`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      // ⚠️ Change these keys to camelCase:
+      courseId,
+      facultyId,
+      topic,
+      description,
+      importantQuestions,
+    }),
   });
-  if (!response.ok) throw new Error("Failed to upload topic");
-  return response.json();
-}
 
+  if (!res.ok) throw new Error("Failed to upload important topic");
+  return res.json();
+}
 /** Study Materials */
 export async function fetchStudyMaterials(courseId: string): Promise<any[]> {
   const res = await fetch(`${API_URL}/study-materials/${courseId}`);
@@ -285,3 +292,20 @@ export async function fetchFacultyCourses(facultyId: string): Promise<Course[]> 
   }
   return res.json();
 }
+export interface TopicPayload {
+  topic_id: number;
+  topic_title: string;
+  topic_description: string;
+  important_questions: string;
+  date_posted: string;
+}
+export interface UploadParams {
+  courseId: string;
+  facultyId: string;
+  topic: string;
+  description: string;
+  importantQuestions: string;
+}
+
+
+
